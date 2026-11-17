@@ -5,7 +5,8 @@
 <a class="rail__item" href="/events">事件去重</a>
 <a class="rail__item" href="/buckets">小时分桶</a>
 <a class="rail__item" href="/watermark">迟到修订</a>
-<a class="rail__item" href="/runs">批次对账</a></nav><div class="rail__foot">规则 2026.11<br>L10 水位时间轴</div></aside>
+<a class="rail__item" href="/runs">批次对账</a>
+<a class="rail__item" href="/evidence">补证裁决</a></nav><div class="rail__foot">规则 2026.11<br>L10 水位时间轴</div></aside>
         <div class="work"><header class="topbar"><span class="topbar__title">{{ title }}</span><span class="signal">UTC WATERMARK ┃ +15 MIN</span><button class="btn" id="refresh">刷新</button></header>
         <main class="content"><div class="kpis"><div class="kpi"><b>批次</b><span>RUN-261116</span></div><div class="kpi"><b>输入</b><span>{{ data.input_count|default(12) }}</span></div><div class="kpi"><b>有效</b><span>{{ data.valid_count|default(9) }}</span></div><div class="kpi"><b>隔离</b><span>{{ data.quarantine_count|default(3) }}</span></div><div class="kpi"><b>状态</b><span class="sev">复核</span></div></div>
         {% block content %}{% endblock %}</main><footer class="statusbar"><span>v2026.11</span><span>Asia/Shanghai</span><span>/api/health</span></footer></div></div><script src="/static/app.js"></script><script src="/static/table.js"></script></body></html>

@@ -1,5 +1,5 @@
 def test_all_module_pages(client):
-    for path in ['/logs', '/time', '/events', '/buckets', '/watermark', '/runs']:
+    for path in ['/logs', '/time', '/events', '/buckets', '/watermark', '/runs', '/evidence']:
         response = client.get(path)
         assert response.status_code == 200
         assert "panel" in response.text

@@ -1,0 +1,144 @@
+{% extends "base.html" %}{% block content %}
+<div class="grid module-7">
+  <section class="panel panel--primary">
+    <div class="panel__head"><h2>补证裁决记录</h2><span class="panel__meta" id="batch-meta">M7 · 待载入</span></div>
+    <div class="panel__body panel__body--scroll">
+      <table class="ledger" id="originals"><thead><tr><th>原行</th><th>行号</th><th>request_id</th><th>原因码</th><th>原值</th><th>版本</th><th>状态</th><th>候选</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+  <div class="stack">
+    <section class="panel">
+      <div class="panel__head"><h2>待补证 / 待裁决 / 已采纳</h2><span class="panel__meta" id="counts-meta">—</span></div>
+      <div class="panel__body bars" id="state-bars"></div>
+    </section>
+    <section class="panel">
+      <div class="panel__head"><h2>本次动作</h2><span class="panel__meta">/api/evidence/*</span></div>
+      <div class="panel__body">
+        <button class="btn btn--primary" id="btn-intake" data-endpoint="/api/evidence/intake">接入坏行样例</button>
+        <button class="btn" id="btn-resume" data-endpoint="/api/evidence/resume">恢复补账</button>
+        <button class="btn" id="btn-refresh">回读</button>
+        <pre class="result" id="result">等待运行</pre>
+      </div>
+    </section>
+  </div>
+  <section class="panel" style="grid-column:1/-1">
+    <div class="panel__head"><h2>小时桶变化</h2><span class="panel__meta" id="bucket-meta">—</span></div>
+    <div class="panel__body panel__body--scroll">
+      <table class="ledger" id="buckets"><thead><tr><th>小时</th><th>服务</th><th>基线</th><th>错误</th><th>采纳</th><th>采纳错误</th><th>撤销</th><th>改判</th><th>有效</th><th>有效错误</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+</div>
+<script>
+const out = document.getElementById("result");
+const el = (tag, text, cls) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node; };
+function note(value) { out.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 1); }
+async function call(path, body) {
+  const res = await fetch(path, {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(body || {})});
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  note(data); return data;
+}
+async function read() {
+  const [batch, buckets] = await Promise.all([
+    fetch("/api/evidence/batch").then(r => r.json()),
+    fetch("/api/evidence/buckets").then(r => r.json())
+  ]);
+  render(batch);
+  renderBuckets(buckets);
+  return {batch, buckets};
+}
+function render(batch) {
+  const meta = document.getElementById("batch-meta");
+  const body = document.querySelector("#originals tbody");
+  body.textContent = "";
+  if (!batch.batch || batch.status === "EMPTY") {
+    meta.textContent = "M7 · 尚未接入批次";
+    document.getElementById("counts-meta").textContent = "—";
+    document.getElementById("state-bars").textContent = "";
+    return;
+  }
+  meta.textContent = `M7 · ${batch.batch.batch_id} · 输入 ${batch.counts.input_count}`;
+  const counts = batch.counts;
+  document.getElementById("counts-meta").textContent =
+    `待补证 ${counts.pending_evidence_count} · 待裁决 ${counts.pending_adjudication_count} · 已采纳 ${counts.adopted_count}`;
+  const bars = document.getElementById("state-bars");
+  bars.textContent = "";
+  const total = Math.max(1, batch.counts.input_count);
+  [["待补证", counts.pending_evidence_count], ["待裁决", counts.pending_adjudication_count], ["已采纳", counts.adopted_count]].forEach(([label, value]) => {
+    const wrap = el("div");
+    wrap.appendChild(el("b", label + " " + value));
+    const bar = el("i");
+    bar.style.setProperty("--v", Math.round(value / total * 100) + "%");
+    wrap.appendChild(bar);
+    bars.appendChild(wrap);
+  });
+  const rows = [...batch.pending_evidence, ...batch.pending_adjudication, ...batch.adopted];
+  for (const row of rows) {
+    const tr = el("tr");
+    tr.appendChild(el("td", row.original_id));
+    tr.appendChild(el("td", String(row.source_line), "num"));
+    tr.appendChild(el("td", row.request_id || "—"));
+    tr.appendChild(el("td", row.reason_code));
+    tr.appendChild(el("td", row.raw_value || "—"));
+    tr.appendChild(el("td", String(row.version), "num"));
+    tr.appendChild(el("td", row.state));
+    const actions = el("td");
+    for (const candidate of row.candidates) {
+      const button = el("button", `${candidate.source_label} ${candidate.status}`, "btn");
+      button.title = candidate.candidate_id;
+      button.addEventListener("click", async () => {
+        const reason = prompt("采纳理由", "供应方重发与工单一致");
+        if (!reason) return;
+        await call("/api/evidence/adjudicate", {
+          original_id: row.original_id, candidate_id: candidate.candidate_id,
+          expected_version: row.version, reason, actor: "reviewer"
+        });
+        await read();
+      });
+      actions.appendChild(button);
+    }
+    if (row.adopted) {
+      const revoke = el("button", "撤销", "btn");
+      revoke.title = row.adopted.decision_id;
+      revoke.addEventListener("click", async () => {
+        const reason = prompt("撤销理由", "复核后回到待裁决");
+        if (!reason) return;
+        await call("/api/evidence/revoke", {
+          original_id: row.original_id, expected_version: row.version,
+          decision_id: row.adopted.decision_id, reason, actor: "reviewer"
+        });
+        await read();
+      });
+      actions.appendChild(revoke);
+    }
+    tr.appendChild(actions);
+    body.appendChild(tr);
+  }
+}
+function renderBuckets(data) {
+  const body = document.querySelector("#buckets tbody");
+  body.textContent = "";
+  document.getElementById("bucket-meta").textContent =
+    data.batch_id ? `${data.batch_id} · ${data.buckets.length} 个桶` : "—";
+  for (const bucket of data.buckets) {
+    const tr = el("tr");
+    [bucket.hour, bucket.service, bucket.base_count, bucket.base_errors, bucket.adopted_count,
+     bucket.adopted_errors, bucket.reverted_count, bucket.superseded_count,
+     bucket.count, bucket.errors].forEach((value, index) => {
+      tr.appendChild(el("td", String(value), index < 2 ? "" : "num"));
+    });
+    body.appendChild(tr);
+  }
+}
+document.getElementById("btn-intake").addEventListener("click", async () => {
+  await call("/api/evidence/intake", {sample: "dirty"});
+  await read();
+});
+document.getElementById("btn-resume").addEventListener("click", async () => {
+  await call("/api/evidence/resume", {});
+  await read();
+});
+document.getElementById("btn-refresh").addEventListener("click", () => read());
+read();
+</script>
+{% endblock %}

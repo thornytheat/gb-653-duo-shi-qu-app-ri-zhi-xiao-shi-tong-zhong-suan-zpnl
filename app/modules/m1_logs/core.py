@@ -5,8 +5,11 @@ def parse(text):
     for line_no,line in enumerate(text.splitlines(),1):
         if not line.strip(): continue
         try:
-            row=json.loads(line); row["request_id"]=str(row.get("request_id","")); row["source_line"]=line_no; rows.append(row)
+            row=json.loads(line)
+            if not isinstance(row,dict): raise TypeError("NOT_OBJECT")
         except json.JSONDecodeError: quarantine.append({"source_line":line_no,"reason":"TRUNCATED","raw":line})
+        except TypeError: quarantine.append({"source_line":line_no,"reason":"INVALID_VALUE","raw":line})
+        else: row["request_id"]=str(row.get("request_id","")); row["source_line"]=line_no; rows.append(row)
     return {"rows":rows,"quarantine":quarantine}
 def run(payload):
     out=parse(payload.get("text",SAMPLE["text"])); return {"status":"READY","input_count":len(out["rows"])+len(out["quarantine"]),"valid_count":len(out["rows"]),"quarantine_count":len(out["quarantine"]),"first_id":out["rows"][0]["request_id"],"reason":out["quarantine"][0]["reason"] if out["quarantine"] else "OK"}
